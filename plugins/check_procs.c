@@ -103,6 +103,7 @@ char *fails;
 char tmp[MAX_INPUT_BUFFER];
 int kthread_filter = 0;
 int usepid = 0; /* whether to test for pid or /proc/pid/exe */
+double fail_value;
 
 FILE *ps_input = NULL;
 
@@ -194,17 +195,16 @@ main (int argc, char **argv)
 	}
 	(void) alarm ((unsigned) timeout_interval);
 
+	if (verbose >= 2)
+		printf (_("CMD: %s\n"), PS_COMMAND);
+
 	if (input_filename == NULL) {
-	    if (verbose >= 2)
-		    printf (_("CMD: %s\n"), PS_COMMAND);
 		result = cmd_run( PS_COMMAND, &chld_out, &chld_err, 0);
 		if (chld_err.lines > 0) {
 			printf ("%s: %s", _("System call sent warnings to stderr"), chld_err.line[0]);
 			exit(STATE_WARNING);
 		}
 	} else {
-	    if (verbose >= 2)
-		    printf (_("INPUT FILE: %s\n"), input_filename);
 		result = cmd_file_read( input_filename, &chld_out, 0);
 	}
 
@@ -327,25 +327,30 @@ main (int argc, char **argv)
 				}
 			}
 
-			if (metric == METRIC_VSZ)
+			if (metric == METRIC_VSZ) {
 				i = get_status ((double)procvsz, procs_thresholds);
-			else if (metric == METRIC_RSS)
+                fail_value = (double)procvsz;
+			} else if (metric == METRIC_RSS) {
 				i = get_status ((double)procrss, procs_thresholds);
+                fail_value = (double)procrss;
 			/* TODO? float thresholds for --metric=CPU */
-			else if (metric == METRIC_CPU)
+			} else if (metric == METRIC_CPU) {
 				i = get_status (procpcpu, procs_thresholds);
-			else if (metric == METRIC_ELAPSED)
+                fail_value = procpcpu;
+			} else if (metric == METRIC_ELAPSED) {
 				i = get_status ((double)procseconds, procs_thresholds);
+                fail_value = (double)procseconds;
+            }
 
 			if (metric != METRIC_PROCS) {
 				if (i == STATE_WARNING) {
 					warn++;
-					xasprintf (&fails, "%s%s%s", fails, (strcmp(fails,"") ? ", " : ""), procprog);
+					xasprintf (&fails, "%s%s%s:%.0f", fails, fail_value, (strcmp(fails,"") ? ", " : ""), procprog);
 					result = max_state (result, i);
 				}
 				if (i == STATE_CRITICAL) {
 					crit++;
-					xasprintf (&fails, "%s%s%s", fails, (strcmp(fails,"") ? ", " : ""), procprog);
+					xasprintf (&fails, "%s%s%s:%.0f", fails, fail_value,  (strcmp(fails,"") ? ", " : ""), procprog);
 					result = max_state (result, i);
 				}
 			}
@@ -785,11 +790,6 @@ print_help (void)
   printf ("   %s\n", _("Only scan for non kernel threads (works on Linux only)."));
   printf (" %s\n", "-g, --cgroup-hierarchy");
   printf ("   %s\n", _("Only scan for processes belonging to STRING hierarchy (works on Linux only)."));
-
-  printf ("\n");
-	printf ("%s\n", "Extra:");
-  printf (" %s\n", "--input-file=FILE");
-  printf ("   %s\n", _("Use FILE content instead of /bin/ps output."));
 
 	printf(_("\n\
 RANGEs are specified 'min:max' or 'min:' or ':max' (or 'max'). If\n\
